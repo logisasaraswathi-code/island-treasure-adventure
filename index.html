@@ -1,24 +1,25 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Treasure Map Quest - Cinematic</title>
+<title>Treasure Map Quest - Cinematic Island</title>
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
 <style>
-  body { margin:0; padding:0; overflow:hidden; background:black; }
-  #feedback { position:absolute; top:10px; width:100%; text-align:center; font-size:24px; font-weight:bold; color:white; text-shadow:2px 2px black; z-index:10;}
-  #ui { position:absolute; bottom:10px; width:100%; display:flex; justify-content:center; gap:10px; z-index:10; }
-  .btn { background: rgba(0,0,0,0.5); color:white; font-size:24px; padding:15px; border-radius:10px; user-select:none; touch-action:none;}
+body { margin:0; overflow:hidden; background:black; }
+#ui { position:absolute; bottom:20px; width:100%; display:flex; justify-content:center; gap:10px; z-index:10; }
+.btn { background:rgba(0,0,0,0.6); color:white; font-size:22px; padding:15px; border-radius:12px; user-select:none; }
+#feedback { position:absolute; top:20px; width:100%; text-align:center; font-size:24px; font-weight:bold; color:white; text-shadow:2px 2px black; z-index:10; }
 </style>
 </head>
 <body>
+
 <div id="feedback"></div>
 <div id="ui">
-  <div class="btn" id="up">↑</div>
-  <div class="btn" id="left">←</div>
-  <div class="btn" id="down">↓</div>
-  <div class="btn" id="right">→</div>
+  <div class="btn" id="left">⬅</div>
+  <div class="btn" id="right">➡</div>
+  <div class="btn" id="up">⬆</div>
+  <div class="btn" id="down">⬇</div>
   <div class="btn" id="jump">⤴</div>
 </div>
 
@@ -27,140 +28,136 @@ let config = {
   type: Phaser.AUTO,
   width: window.innerWidth,
   height: window.innerHeight,
-  physics: { default:'arcade', arcade:{ gravity:{y:0}, debug:false } },
-  scene: { preload:preload, create:create, update:update }
+  physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
+  scene: { preload, create, update }
 };
 let game = new Phaser.Game(config);
 
-let player, cursors, treasures, feedbackText, aiExplorers=[], particles;
+let player, aiGroup, treasures, cursors = {}, particles;
+let feedback = null;
 let coins = 0;
-let inventory = [];
 
 function preload() {
-  // Parallax backgrounds (replace with high-res cinematic images)
-  this.load.image('bg_far','https://i.imgur.com/BxK9j0F.jpg'); // Background mountains
-  this.load.image('bg_mid','https://i.imgur.com/t4K2y8E.png'); // Midground jungle
-  this.load.image('bg_front','https://i.imgur.com/6U5fMki.png'); // Foreground trees
-  
-  // Explorer sprites (placeholder)
-  this.load.spritesheet('player','https://i.imgur.com/HRQ1vRv.png',{ frameWidth:32, frameHeight:48 });
-  this.load.spritesheet('ai','https://i.imgur.com/HRQ1vRv.png',{ frameWidth:32, frameHeight:48 });
-
-  // Treasure
-  this.load.image('treasure','https://i.imgur.com/OdL0XPt.png'); // chest
-
-  // Particle
-  this.load.image('spark','https://i.imgur.com/K2vA2bT.png'); 
+  // Load your cinematic assets
+  this.load.image('bg_far','assets/bg_far.png');
+  this.load.image('bg_mid','assets/bg_mid.png');
+  this.load.image('bg_front','assets/bg_front.png');
+  this.load.spritesheet('player','assets/player.png',{frameWidth:64,frameHeight:64});
+  this.load.spritesheet('ai','assets/ai.png',{frameWidth:64,frameHeight:64});
+  this.load.image('treasure','assets/treasure.png');
+  this.load.image('spark','assets/spark.png');
+  this.load.audio('bgm','assets/bgm.mp3');
 }
 
 function create() {
-  feedbackText = document.getElementById('feedback');
 
-  // Parallax layers
-  this.bg_far = this.add.tileSprite(0,0,config.width,config.height,'bg_far').setOrigin(0,0);
-  this.bg_mid = this.add.tileSprite(0,0,config.width,config.height,'bg_mid').setOrigin(0,0);
-  this.bg_front = this.add.tileSprite(0,0,config.width,config.height,'bg_front').setOrigin(0,0);
+  feedback = document.getElementById("feedback");
+
+  // Play background music
+  let music = this.sound.add('bgm',{ loop:true, volume:0.5 });
+  music.play();
+
+  // Parallax backgrounds
+  this.bg_far = this.add.tileSprite(0,0,config.width,config.height,'bg_far').setOrigin(0);
+  this.bg_mid = this.add.tileSprite(0,0,config.width,config.height,'bg_mid').setOrigin(0);
+  this.bg_front = this.add.tileSprite(0,0,config.width,config.height,'bg_front').setOrigin(0);
 
   // Player
-  player = this.physics.add.sprite(100,100,'player',0).setScale(1.5);
+  player = this.physics.add.sprite(200,200,'player').setScale(1.5);
   player.setCollideWorldBounds(true);
-  this.anims.create({ key:'walk', frames:this.anims.generateFrameNumbers('player',{start:0,end:3}), frameRate:8, repeat:-1 });
 
-  // AI Explorers
-  for(let i=0;i<2;i++){
-    let ai = this.physics.add.sprite(200+200*i, 200, 'ai',0).setScale(1.5);
-    aiExplorers.push(ai);
+  this.anims.create({
+    key:'walk',
+    frames:this.anims.generateFrameNumbers('player',{start:0,end:3}),
+    frameRate:10,
+    repeat:-1
+  });
+
+  // AI explorers
+  aiGroup = this.physics.add.group();
+  for(let i=0;i<3;i++){
+    let ai = this.physics.add.sprite(Phaser.Math.Between(400,config.width-200),
+                                      Phaser.Math.Between(100,config.height-200),
+                                      'ai').setScale(1.5).setTint(0xff0000);
+    this.anims.create({key:'aiWalk'+i,frames:this.anims.generateFrameNumbers('ai',{start:0,end:3}),frameRate:10,repeat:-1});
+    ai.anims.play('aiWalk'+i,true);
+    aiGroup.add(ai);
   }
 
   // Treasures
   treasures = this.physics.add.group();
-  spawnTreasure(this,5);
+  for(let i=0;i<5;i++){
+    let t = this.physics.add.sprite(Phaser.Math.Between(100,config.width-100),
+                                    Phaser.Math.Between(100,config.height-100),
+                                    'treasure').setScale(0.5);
+    treasures.add(t);
+  }
 
-  // Overlaps
-  this.physics.add.overlap(player, treasures, (p,t)=>collectTreasure(p,t,true));
-  
-  // Mobile Buttons
-  cursors = {up:false, down:false, left:false, right:false, jump:false};
-  ['up','down','left','right','jump'].forEach(id=>{
-    document.getElementById(id).addEventListener('pointerdown',()=>cursors[id]=true);
-    document.getElementById(id).addEventListener('pointerup',()=>cursors[id]=false);
+  // Particles
+  particles = this.add.particles('spark');
+
+  // Overlap collection
+  this.physics.add.overlap(player,treasures,collectTreasure,null,this);
+
+  // Mobile buttons
+  ['left','right','up','down','jump'].forEach(key=>{
+    cursors[key]=false;
+    document.getElementById(key).addEventListener('pointerdown',()=>cursors[key]=true);
+    document.getElementById(key).addEventListener('pointerup',()=>cursors[key]=false);
   });
 
   // Camera follow
-  this.cameras.main.startFollow(player);
+  this.cameras.main.startFollow(player,{ lerp:0.1, followOffset:{x:0,y:0} });
 
-  // Particle manager
-  particles = this.add.particles('spark');
 }
 
 function update() {
-  let speed = 150;
-  if(cursors.left) player.setVelocityX(-speed);
-  else if(cursors.right) player.setVelocityX(speed);
-  else player.setVelocityX(0);
+  let speed = 200;
+  player.setVelocity(0);
 
+  if(cursors.left) player.setVelocityX(-speed);
+  if(cursors.right) player.setVelocityX(speed);
   if(cursors.up) player.setVelocityY(-speed);
-  else if(cursors.down) player.setVelocityY(speed);
-  else player.setVelocityY(0);
+  if(cursors.down) player.setVelocityY(speed);
+  if(cursors.jump && player.body.blocked.down) player.setVelocityY(-400);
 
   if(player.body.velocity.x!==0 || player.body.velocity.y!==0) player.anims.play('walk',true);
   else player.anims.stop();
 
-  // Parallax effect
+  // AI random movement
+  aiGroup.getChildren().forEach(ai=>{
+    if(!ai.direction || Phaser.Math.Between(0,100)<2){
+      ai.direction = {x:Phaser.Math.Between(-100,100), y:Phaser.Math.Between(-100,100)};
+    }
+    ai.setVelocity(ai.direction.x,ai.direction.y);
+  });
+
+  // Parallax
   this.bg_far.tilePositionX = this.cameras.main.scrollX*0.2;
   this.bg_mid.tilePositionX = this.cameras.main.scrollX*0.5;
   this.bg_front.tilePositionX = this.cameras.main.scrollX*0.8;
-
-  // AI movement toward nearest treasure
-  aiExplorers.forEach(ai=>{
-    if(treasures.getChildren().length>0){
-      let t = Phaser.Utils.Array.GetRandom(treasures.getChildren());
-      this.physics.moveToObject(ai, t, 100);
-      this.physics.add.overlap(ai,t,(ai,t)=>collectTreasure(ai,t,false));
-    } else ai.setVelocity(0);
-  });
 }
 
-// Spawn treasures
-function spawnTreasure(scene,count){
-  for(let i=0;i<count;i++){
-    let x = Phaser.Math.Between(150, config.width-150);
-    let y = Phaser.Math.Between(150, config.height-150);
-    let t = treasures.create(x,y,'treasure').setScale(1.2);
-    t.collected=false;
-  }
-}
-
-// Collect treasure
-function collectTreasure(character, treasure, isPlayer){
-  if(treasure.collected) return;
-  treasure.collected = true;
+function collectTreasure(player, treasure) {
   treasure.disableBody(true,true);
+  coins += Phaser.Math.Between(4000,10000);
 
-  let isRare = Math.random()<0.1;
-  let earned = isRare?Phaser.Math.Between(8000,10000):4000;
+  feedback.innerHTML = "✨ Treasure Collected! Coins: "+coins;
+  feedback.style.color="gold";
 
-  if(isPlayer){
-    coins += earned;
-    inventory.push({type: isRare?'Rare Artifact':'Treasure', amount:earned});
-    feedbackText.innerHTML = isRare? "🌟 Rare treasure collected! +"+earned:"🎉 You found a treasure! +"+earned;
-    feedbackText.style.color = isRare?'gold':'lime';
+  let emitter = particles.createEmitter({
+    x: treasure.x,
+    y: treasure.y,
+    speed:{min:-200,max:200},
+    lifespan:600,
+    quantity:30,
+    scale:{start:0.6,end:0}
+  });
 
-    // Particle burst
-    let emitter = particles.createEmitter({
-      x: treasure.x, y: treasure.y,
-      speed:{min:-100,max:100},
-      lifespan:500,
-      quantity:20,
-      scale:{start:0.5,end:0},
-      blendMode:'ADD'
-    });
-    setTimeout(()=>emitter.stop(),500);
-  } else {
-    feedbackText.innerHTML = "❌ Oops! AI found the treasure first.";
-    feedbackText.style.color='red';
-  }
-  setTimeout(()=>{feedbackText.innerHTML='';},2000);
+  setTimeout(()=>{
+    emitter.stop();
+    feedback.innerHTML="";
+  },1000);
 }
 </script>
 </body>
