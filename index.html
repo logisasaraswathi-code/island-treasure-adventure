@@ -4,127 +4,149 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Treasure Map Quest</title>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
 <style>
-  body { margin:0; font-family:sans-serif; overflow:hidden; background:#87CEEB; }
-  #gameCanvas { display:block; margin:0 auto; background:url('https://i.ibb.co/1LR7JjZ/island-map.png') no-repeat center/cover; }
-  .overlay { position:absolute; top:10px; left:50%; transform:translateX(-50%); color:white; font-size:24px; font-weight:bold; text-shadow:2px 2px 5px black; }
-  .feedback { position:absolute; top:60px; left:50%; transform:translateX(-50%); font-size:28px; font-weight:bold; text-shadow:2px 2px 5px black; opacity:0; transition:opacity 0.5s; }
-  #inventory { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.6); padding:10px; border-radius:10px; display:flex; gap:10px; }
-  .item { width:50px; height:50px; border-radius:5px; border:2px solid gold; background-size:cover; animation:pop 0.5s ease; }
-  @keyframes pop { 0%{transform:scale(0);} 100%{transform:scale(1);} }
+  body { margin:0; padding:0; overflow:hidden; }
+  #ui { position:absolute; bottom:10px; width:100%; display:flex; justify-content:center; gap:10px; }
+  .btn { background: rgba(0,0,0,0.5); color:white; font-size:20px; padding:15px; border-radius:10px; user-select:none; }
+  #feedback { position:absolute; top:20px; width:100%; text-align:center; font-size:24px; font-weight:bold; color:white; text-shadow:2px 2px black; }
 </style>
 </head>
 <body>
-
-<div class="overlay" id="coinsDisplay">Coins: 0</div>
-<div class="feedback" id="feedback"></div>
-<canvas id="gameCanvas" width="800" height="500"></canvas>
-<div id="inventory"></div>
-
-<audio id="bgm" src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" loop autoplay></audio>
-
+<div id="feedback"></div>
+<div id="ui">
+  <div class="btn" id="up">↑</div>
+  <div class="btn" id="left">←</div>
+  <div class="btn" id="down">↓</div>
+  <div class="btn" id="right">→</div>
+  <div class="btn" id="jump">⤴</div>
+</div>
 <script>
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+let config = {
+  type: Phaser.AUTO,
+  width: window.innerWidth,
+  height: window.innerHeight,
+  parent: document.body,
+  physics: { default: 'arcade', arcade: { gravity: {y:0}, debug:false } },
+  scene: { preload: preload, create: create, update: update }
+};
 
-const feedbackEl = document.getElementById('feedback');
-const coinsDisplay = document.getElementById('coinsDisplay');
-const inventoryEl = document.getElementById('inventory');
+let game = new Phaser.Game(config);
+let player, cursors, treasures, feedbackText, aiExplorers=[];
+let coins = 0;
 
-let player = { x: 100, y: 400, color:'blue', coins:0, treasures:[] };
-let aiExplorers = [
-  { x: 700, y: 400, color:'red', found:false },
-  { x: 700, y: 100, color:'green', found:false }
-];
-
-let treasures = [
-  { x: 200, y: 200, type:'gem', value:4000, found:false, img:'https://i.ibb.co/mbP5Q5T/gem.png' },
-  { x: 600, y: 100, type:'chest', value:5000, found:false, img:'https://i.ibb.co/Wp1Qd8N/chest.png' },
-  { x: 400, y: 300, type:'artifact', value:10000, found:false, img:'https://i.ibb.co/qYh9ZrP/artifact.png' }
-];
-
-function drawCharacter(character){
-  ctx.beginPath();
-  ctx.arc(character.x, character.y, 20, 0, Math.PI*2);
-  ctx.fillStyle = character.color;
-  ctx.fill();
-  ctx.closePath();
+function preload() {
+  // Map background placeholder
+  this.load.image('island', 'https://i.imgur.com/4AiXzf8.jpg'); // Use realistic island image
+  // Explorer sprites (placeholder)
+  this.load.spritesheet('player', 'https://i.imgur.com/HRQ1vRv.png', { frameWidth: 32, frameHeight: 48 });
+  this.load.spritesheet('ai', 'https://i.imgur.com/HRQ1vRv.png', { frameWidth: 32, frameHeight: 48 });
+  // Treasure image
+  this.load.image('treasure', 'https://i.imgur.com/OdL0XPt.png');
 }
 
-function drawTreasure(t){
-  if(t.found) return;
-  ctx.beginPath();
-  ctx.arc(t.x, t.y, 15, 0, Math.PI*2);
-  ctx.fillStyle = t.type==='artifact'?'gold':t.type==='chest'?'brown':'cyan';
-  ctx.fill();
-  ctx.closePath();
+function create() {
+  // Background
+  this.add.image(config.width/2, config.height/2, 'island').setDisplaySize(config.width, config.height);
+  
+  // Feedback text
+  feedbackText = document.getElementById('feedback');
+  
+  // Player
+  player = this.physics.add.sprite(100, 100, 'player', 0);
+  player.setCollideWorldBounds(true);
+  
+  // Player animations
+  this.anims.create({ key:'walk', frames:this.anims.generateFrameNumbers('player', {start:0,end:3}), frameRate:8, repeat:-1 });
+  
+  // AI Explorers
+  for(let i=0;i<2;i++){
+    let ai = this.physics.add.sprite(200+200*i, 200, 'ai',0);
+    aiExplorers.push(ai);
+    this.physics.add.overlap(ai, treasures, (ai,t)=>collectTreasure(ai,t,false));
+  }
+  
+  // Treasures
+  treasures = this.physics.add.group();
+  spawnTreasure(this);
+  
+  // Collision detection
+  this.physics.add.overlap(player, treasures, (player,t)=>collectTreasure(player,t,true));
+  
+  // Controls
+  cursors = {up:false, down:false, left:false, right:false, jump:false};
+  
+  // Button events
+  document.getElementById('up').addEventListener('pointerdown',()=>cursors.up=true);
+  document.getElementById('up').addEventListener('pointerup',()=>cursors.up=false);
+  document.getElementById('down').addEventListener('pointerdown',()=>cursors.down=true);
+  document.getElementById('down').addEventListener('pointerup',()=>cursors.down=false);
+  document.getElementById('left').addEventListener('pointerdown',()=>cursors.left=true);
+  document.getElementById('left').addEventListener('pointerup',()=>cursors.left=false);
+  document.getElementById('right').addEventListener('pointerdown',()=>cursors.right=true);
+  document.getElementById('right').addEventListener('pointerup',()=>cursors.right=false);
+  document.getElementById('jump').addEventListener('pointerdown',()=>cursors.jump=true);
+  document.getElementById('jump').addEventListener('pointerup',()=>cursors.jump=false);
+  
+  // Camera
+  this.cameras.main.startFollow(player);
 }
 
-function drawScene(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  treasures.forEach(drawTreasure);
-  drawCharacter(player);
-  aiExplorers.forEach(drawCharacter);
-}
-
-function showFeedback(message,color='white'){
-  feedbackEl.textContent = message;
-  feedbackEl.style.color = color;
-  feedbackEl.style.opacity = 1;
-  setTimeout(()=> feedbackEl.style.opacity=0,2000);
-}
-
-function moveAI(){
+function update() {
+  let speed = 150;
+  if(cursors.left) player.setVelocityX(-speed);
+  else if(cursors.right) player.setVelocityX(speed);
+  else player.setVelocityX(0);
+  
+  if(cursors.up) player.setVelocityY(-speed);
+  else if(cursors.down) player.setVelocityY(speed);
+  else player.setVelocityY(0);
+  
+  if(player.body.velocity.x!==0 || player.body.velocity.y!==0) player.anims.play('walk',true);
+  else player.anims.stop();
+  
+  // AI movement towards random treasure
   aiExplorers.forEach(ai=>{
-    if(ai.found) return;
-    treasures.forEach(t=>{
-      if(t.found) return;
-      if(Math.random()<0.01){
-        ai.x += (t.x - ai.x)*0.1;
-        ai.y += (t.y - ai.y)*0.1;
-      }
-      if(Math.hypot(ai.x - t.x, ai.y - t.y)<25){
-        t.found = true;
-        ai.found = true;
-        showFeedback(`AI Explorer ${ai.color} found a treasure!`, ai.color);
-      }
-    });
+    if(treasures.getChildren().length>0){
+      let t = Phaser.Utils.Array.GetRandom(treasures.getChildren());
+      this.physics.moveToObject(ai, t, 100);
+    } else ai.setVelocity(0);
   });
 }
 
-function checkPlayerTreasure(){
-  treasures.forEach(t=>{
-    if(t.found) return;
-    if(Math.hypot(player.x - t.x, player.y - t.y)<25){
-      t.found = true;
-      player.coins += t.value;
-      player.treasures.push(t.type);
-      coinsDisplay.textContent = 'Coins: '+player.coins;
-      showFeedback(`🎉 You found ${t.type}! +${t.value} coins`, t.type==='artifact'?'gold':'green');
-      const div = document.createElement('div');
-      div.className='item';
-      div.style.backgroundImage = `url('${t.img}')`;
-      inventoryEl.appendChild(div);
-    }
-  });
+// Spawn treasures randomly
+function spawnTreasure(scene){
+  for(let i=0;i<5;i++){
+    let x = Phaser.Math.Between(100, config.width-100);
+    let y = Phaser.Math.Between(100, config.height-100);
+    let t = treasures.create(x,y,'treasure');
+    t.setScale(0.5);
+    t.setInteractive();
+    t.collected=false;
+  }
 }
 
-document.addEventListener('keydown', (e)=>{
-  if(e.key==='ArrowUp') player.y -=5;
-  if(e.key==='ArrowDown') player.y +=5;
-  if(e.key==='ArrowLeft') player.x -=5;
-  if(e.key==='ArrowRight') player.x +=5;
-  checkPlayerTreasure();
-});
-
-function gameLoop(){
-  drawScene();
-  moveAI();
-  requestAnimationFrame(gameLoop);
+// Collect treasure
+function collectTreasure(character, treasure, isPlayer){
+  if(treasure.collected) return;
+  treasure.collected = true;
+  treasure.disableBody(true,true);
+  
+  let isRare = Math.random()<0.1;
+  let earned = isRare?Phaser.Math.Between(8000,10000):4000;
+  
+  if(isPlayer){
+    coins += earned;
+    feedbackText.innerHTML = isRare? "🌟 Rare treasure collected! +"+earned:"🎉 You found a treasure! +"+earned;
+    feedbackText.style.color = isRare?'gold':'lime';
+  } else {
+    feedbackText.innerHTML = "❌ Oops! AI found the treasure first.";
+    feedbackText.style.color = 'red';
+  }
+  
+  // Fade out feedback
+  setTimeout(()=>{feedbackText.innerHTML='';},2000);
 }
-
-gameLoop();
 </script>
-
 </body>
-  </html>
+</html>
