@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Treasure Map Quest</title>
+<style>
+  body { margin:0; font-family:sans-serif; overflow:hidden; background:#87CEEB; }
+  #gameCanvas { display:block; margin:0 auto; background:url('https://i.ibb.co/1LR7JjZ/island-map.png') no-repeat center/cover; }
+  .overlay { position:absolute; top:10px; left:50%; transform:translateX(-50%); color:white; font-size:24px; font-weight:bold; text-shadow:2px 2px 5px black; }
+  .feedback { position:absolute; top:60px; left:50%; transform:translateX(-50%); font-size:28px; font-weight:bold; text-shadow:2px 2px 5px black; opacity:0; transition:opacity 0.5s; }
+  #inventory { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.6); padding:10px; border-radius:10px; display:flex; gap:10px; }
+  .item { width:50px; height:50px; border-radius:5px; border:2px solid gold; background-size:cover; animation:pop 0.5s ease; }
+  @keyframes pop { 0%{transform:scale(0);} 100%{transform:scale(1);} }
+</style>
+</head>
+<body>
+
+<div class="overlay" id="coinsDisplay">Coins: 0</div>
+<div class="feedback" id="feedback"></div>
+<canvas id="gameCanvas" width="800" height="500"></canvas>
+<div id="inventory"></div>
+
+<audio id="bgm" src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" loop autoplay></audio>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const feedbackEl = document.getElementById('feedback');
+const coinsDisplay = document.getElementById('coinsDisplay');
+const inventoryEl = document.getElementById('inventory');
+
+let player = { x: 100, y: 400, color:'blue', coins:0, treasures:[] };
+let aiExplorers = [
+  { x: 700, y: 400, color:'red', found:false },
+  { x: 700, y: 100, color:'green', found:false }
+];
+
+let treasures = [
+  { x: 200, y: 200, type:'gem', value:4000, found:false, img:'https://i.ibb.co/mbP5Q5T/gem.png' },
+  { x: 600, y: 100, type:'chest', value:5000, found:false, img:'https://i.ibb.co/Wp1Qd8N/chest.png' },
+  { x: 400, y: 300, type:'artifact', value:10000, found:false, img:'https://i.ibb.co/qYh9ZrP/artifact.png' }
+];
+
+function drawCharacter(character){
+  ctx.beginPath();
+  ctx.arc(character.x, character.y, 20, 0, Math.PI*2);
+  ctx.fillStyle = character.color;
+  ctx.fill();
+  ctx.closePath();
+}
+
+function drawTreasure(t){
+  if(t.found) return;
+  ctx.beginPath();
+  ctx.arc(t.x, t.y, 15, 0, Math.PI*2);
+  ctx.fillStyle = t.type==='artifact'?'gold':t.type==='chest'?'brown':'cyan';
+  ctx.fill();
+  ctx.closePath();
+}
+
+function drawScene(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  treasures.forEach(drawTreasure);
+  drawCharacter(player);
+  aiExplorers.forEach(drawCharacter);
+}
+
+function showFeedback(message,color='white'){
+  feedbackEl.textContent = message;
+  feedbackEl.style.color = color;
+  feedbackEl.style.opacity = 1;
+  setTimeout(()=> feedbackEl.style.opacity=0,2000);
+}
+
+function moveAI(){
+  aiExplorers.forEach(ai=>{
+    if(ai.found) return;
+    treasures.forEach(t=>{
+      if(t.found) return;
+      if(Math.random()<0.01){
+        ai.x += (t.x - ai.x)*0.1;
+        ai.y += (t.y - ai.y)*0.1;
+      }
+      if(Math.hypot(ai.x - t.x, ai.y - t.y)<25){
+        t.found = true;
+        ai.found = true;
+        showFeedback(`AI Explorer ${ai.color} found a treasure!`, ai.color);
+      }
+    });
+  });
+}
+
+function checkPlayerTreasure(){
+  treasures.forEach(t=>{
+    if(t.found) return;
+    if(Math.hypot(player.x - t.x, player.y - t.y)<25){
+      t.found = true;
+      player.coins += t.value;
+      player.treasures.push(t.type);
+      coinsDisplay.textContent = 'Coins: '+player.coins;
+      showFeedback(`🎉 You found ${t.type}! +${t.value} coins`, t.type==='artifact'?'gold':'green');
+      const div = document.createElement('div');
+      div.className='item';
+      div.style.backgroundImage = `url('${t.img}')`;
+      inventoryEl.appendChild(div);
+    }
+  });
+}
+
+document.addEventListener('keydown', (e)=>{
+  if(e.key==='ArrowUp') player.y -=5;
+  if(e.key==='ArrowDown') player.y +=5;
+  if(e.key==='ArrowLeft') player.x -=5;
+  if(e.key==='ArrowRight') player.x +=5;
+  checkPlayerTreasure();
+});
+
+function gameLoop(){
+  drawScene();
+  moveAI();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+
+</body>
+  </html>
