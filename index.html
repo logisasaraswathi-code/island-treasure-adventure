@@ -6,7 +6,7 @@
 <title>Treasure Map Quest - Cinematic Island</title>
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
 <style>
-body { margin:0; overflow:hidden; background:black; }
+body { margin:0; overflow:hidden; }
 #ui { position:absolute; bottom:20px; width:100%; display:flex; justify-content:center; gap:10px; z-index:10; }
 .btn { background:rgba(0,0,0,0.6); color:white; font-size:22px; padding:15px; border-radius:12px; user-select:none; }
 #feedback { position:absolute; top:20px; width:100%; text-align:center; font-size:24px; font-weight:bold; color:white; text-shadow:2px 2px black; z-index:10; }
@@ -31,6 +31,7 @@ let config = {
   physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
   scene: { preload, create, update }
 };
+
 let game = new Phaser.Game(config);
 
 let player, aiGroup, treasures, cursors = {}, particles;
@@ -38,7 +39,7 @@ let feedback = null;
 let coins = 0;
 
 function preload() {
-  // Load your cinematic assets
+  // Load cinematic images - YOU MUST HAVE REAL IMAGES
   this.load.image('bg_far','assets/bg_far.png');
   this.load.image('bg_mid','assets/bg_mid.png');
   this.load.image('bg_front','assets/bg_front.png');
@@ -50,35 +51,26 @@ function preload() {
 }
 
 function create() {
-
   feedback = document.getElementById("feedback");
 
-  // Play background music
   let music = this.sound.add('bgm',{ loop:true, volume:0.5 });
   music.play();
 
-  // Parallax backgrounds
+  // Cinematic parallax background layers
   this.bg_far = this.add.tileSprite(0,0,config.width,config.height,'bg_far').setOrigin(0);
   this.bg_mid = this.add.tileSprite(0,0,config.width,config.height,'bg_mid').setOrigin(0);
   this.bg_front = this.add.tileSprite(0,0,config.width,config.height,'bg_front').setOrigin(0);
 
   // Player
-  player = this.physics.add.sprite(200,200,'player').setScale(1.5);
-  player.setCollideWorldBounds(true);
-
-  this.anims.create({
-    key:'walk',
-    frames:this.anims.generateFrameNumbers('player',{start:0,end:3}),
-    frameRate:10,
-    repeat:-1
-  });
+  player = this.physics.add.sprite(200,200,'player').setScale(1.5).setCollideWorldBounds(true);
+  this.anims.create({key:'walk',frames:this.anims.generateFrameNumbers('player',{start:0,end:3}),frameRate:10,repeat:-1});
 
   // AI explorers
   aiGroup = this.physics.add.group();
   for(let i=0;i<3;i++){
     let ai = this.physics.add.sprite(Phaser.Math.Between(400,config.width-200),
-                                      Phaser.Math.Between(100,config.height-200),
-                                      'ai').setScale(1.5).setTint(0xff0000);
+                                     Phaser.Math.Between(100,config.height-200),
+                                     'ai').setScale(1.5).setTint(0xff0000);
     this.anims.create({key:'aiWalk'+i,frames:this.anims.generateFrameNumbers('ai',{start:0,end:3}),frameRate:10,repeat:-1});
     ai.anims.play('aiWalk'+i,true);
     aiGroup.add(ai);
@@ -93,7 +85,7 @@ function create() {
     treasures.add(t);
   }
 
-  // Particles
+  // Particle effects
   particles = this.add.particles('spark');
 
   // Overlap collection
@@ -108,7 +100,6 @@ function create() {
 
   // Camera follow
   this.cameras.main.startFollow(player,{ lerp:0.1, followOffset:{x:0,y:0} });
-
 }
 
 function update() {
@@ -132,7 +123,7 @@ function update() {
     ai.setVelocity(ai.direction.x,ai.direction.y);
   });
 
-  // Parallax
+  // Parallax movement
   this.bg_far.tilePositionX = this.cameras.main.scrollX*0.2;
   this.bg_mid.tilePositionX = this.cameras.main.scrollX*0.5;
   this.bg_front.tilePositionX = this.cameras.main.scrollX*0.8;
@@ -154,10 +145,7 @@ function collectTreasure(player, treasure) {
     scale:{start:0.6,end:0}
   });
 
-  setTimeout(()=>{
-    emitter.stop();
-    feedback.innerHTML="";
-  },1000);
+  setTimeout(()=>{ emitter.stop(); feedback.innerHTML=""; },1000);
 }
 </script>
 </body>
