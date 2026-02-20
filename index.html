@@ -1,20 +1,26 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Treasure Map Quest - Cinematic Island</title>
+<title>Treasure Map Quest — Cinematic</title>
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
 <style>
-body { margin:0; overflow:hidden; }
-#ui { position:absolute; bottom:20px; width:100%; display:flex; justify-content:center; gap:10px; z-index:10; }
-.btn { background:rgba(0,0,0,0.6); color:white; font-size:22px; padding:15px; border-radius:12px; user-select:none; }
-#feedback { position:absolute; top:20px; width:100%; text-align:center; font-size:24px; font-weight:bold; color:white; text-shadow:2px 2px black; z-index:10; }
+ body { margin: 0; padding: 0; overflow: hidden; background: #000; }
+ #feedback { position:absolute; top:15px; width:100%; text-align:center; font-size:22px; font-weight:bold; color:white; text-shadow:2px 2px 4px black; z-index:10; }
+ #score { position:absolute; top:60px; left:20px; font-size:20px; color:gold; font-weight:bold; z-index:10; text-shadow:2px 2px 3px black; }
+ #inventory { position:absolute; bottom:10px; left:10px; display:flex; gap:10px; z-index:10; }
+ .inv-item { width:50px; height:50px; border:2px solid gold; border-radius:8px; background-size:cover; }
+ #ui { position:absolute; bottom:10px; width:100%; display:flex; justify-content:center; gap:10px; z-index:10; }
+ .btn { background:rgba(0,0,0,0.6); color:white; font-size:20px; padding:10px; border-radius:10px; user-select:none; }
 </style>
 </head>
 <body>
 
 <div id="feedback"></div>
+<div id="score">Coins: 0</div>
+<div id="inventory"></div>
+
 <div id="ui">
   <div class="btn" id="left">⬅</div>
   <div class="btn" id="right">➡</div>
@@ -24,129 +30,153 @@ body { margin:0; overflow:hidden; }
 </div>
 
 <script>
+// --------------------------------------------
+// 🍃 Treasure Map Quest — Cinematic Mobile Game
+// --------------------------------------------
+
 let config = {
-  type: Phaser.AUTO,
-  width: window.innerWidth,
-  height: window.innerHeight,
-  physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
-  scene: { preload, create, update }
+ type: Phaser.AUTO,
+ width: window.innerWidth,
+ height: window.innerHeight,
+ physics: { default: "arcade", arcade: { gravity: { y: 0 }, debug: false } },
+ scene: { preload, create, update }
 };
 
 let game = new Phaser.Game(config);
-
 let player, aiGroup, treasures, cursors = {}, particles;
-let feedback = null;
+let feedback, scoreText, inventoryUI;
 let coins = 0;
 
 function preload() {
-  // Load cinematic images - YOU MUST HAVE REAL IMAGES
-  this.load.image('bg_far','assets/bg_far.png');
-  this.load.image('bg_mid','assets/bg_mid.png');
-  this.load.image('bg_front','assets/bg_front.png');
-  this.load.spritesheet('player','assets/player.png',{frameWidth:64,frameHeight:64});
-  this.load.spritesheet('ai','assets/ai.png',{frameWidth:64,frameHeight:64});
-  this.load.image('treasure','assets/treasure.png');
-  this.load.image('spark','assets/spark.png');
-  this.load.audio('bgm','assets/bgm.mp3');
+ // 🎨 Real visual assets that DO load
+ this.load.image('bg_far','https://labs.phaser.io/assets/skies/deepblue.png'); 
+ this.load.image('bg_mid','https://labs.phaser.io/assets/skies/cavern2.png'); 
+ this.load.image('bg_front','https://labs.phaser.io/assets/skies/cavern1.png'); 
+
+ // Sprites
+ this.load.spritesheet('player','https://labs.phaser.io/assets/sprites/dude.png',{ frameWidth:32, frameHeight:48 });
+ this.load.spritesheet('ai','https://labs.phaser.io/assets/sprites/dude.png',{ frameWidth:32, frameHeight:48 });
+
+ // Treasure + particle
+ this.load.image('treasure','https://labs.phaser.io/assets/sprites/chest.png');
+ this.load.image('spark','https://labs.phaser.io/assets/particles/yellow.png');
+
+ // BGM
+ this.load.audio('bgm','https://actions.google.com/sounds/v1/ambiences/forest_stream.ogg');
 }
 
 function create() {
-  feedback = document.getElementById("feedback");
 
-  let music = this.sound.add('bgm',{ loop:true, volume:0.5 });
-  music.play();
+ // 🪵 Background Music — Cinematic BGM
+ let bgm = this.sound.add('bgm',{ loop:true, volume:0.4 });
+ bgm.play();
 
-  // Cinematic parallax background layers
-  this.bg_far = this.add.tileSprite(0,0,config.width,config.height,'bg_far').setOrigin(0);
-  this.bg_mid = this.add.tileSprite(0,0,config.width,config.height,'bg_mid').setOrigin(0);
-  this.bg_front = this.add.tileSprite(0,0,config.width,config.height,'bg_front').setOrigin(0);
+ feedback = document.getElementById("feedback");
+ scoreText = document.getElementById("score");
+ inventoryUI = document.getElementById("inventory");
 
-  // Player
-  player = this.physics.add.sprite(200,200,'player').setScale(1.5).setCollideWorldBounds(true);
-  this.anims.create({key:'walk',frames:this.anims.generateFrameNumbers('player',{start:0,end:3}),frameRate:10,repeat:-1});
+ // 🎥 Parallax Background
+ this.bg_far = this.add.tileSprite(0,0,config.width,config.height,'bg_far').setOrigin(0);
+ this.bg_mid = this.add.tileSprite(0,0,config.width,config.height,'bg_mid').setOrigin(0);
+ this.bg_front = this.add.tileSprite(0,0,config.width,config.height,'bg_front').setOrigin(0);
 
-  // AI explorers
-  aiGroup = this.physics.add.group();
-  for(let i=0;i<3;i++){
-    let ai = this.physics.add.sprite(Phaser.Math.Between(400,config.width-200),
-                                     Phaser.Math.Between(100,config.height-200),
-                                     'ai').setScale(1.5).setTint(0xff0000);
-    this.anims.create({key:'aiWalk'+i,frames:this.anims.generateFrameNumbers('ai',{start:0,end:3}),frameRate:10,repeat:-1});
-    ai.anims.play('aiWalk'+i,true);
-    aiGroup.add(ai);
-  }
+ // 👣 Player Sprite
+ player = this.physics.add.sprite(200,200,'player').setScale(1.5).setCollideWorldBounds(true);
+ this.anims.create({ key:"walk", frames:this.anims.generateFrameNumbers('player',{start:0,end:3}), frameRate:10, repeat:-1 });
 
-  // Treasures
-  treasures = this.physics.add.group();
-  for(let i=0;i<5;i++){
-    let t = this.physics.add.sprite(Phaser.Math.Between(100,config.width-100),
-                                    Phaser.Math.Between(100,config.height-100),
-                                    'treasure').setScale(0.5);
-    treasures.add(t);
-  }
+ // 🤖 AI Explorers
+ aiGroup = this.physics.add.group();
+ for(let i=0;i<3;i++){
+   let ai = this.physics.add.sprite(300+i*200,300,'ai').setScale(1.5).setTint(0xff4444);
+   aiGroup.add(ai);
+   this.anims.create({ key:"aiWalk"+i, frames:this.anims.generateFrameNumbers('ai',{start:0,end:3}), frameRate:8, repeat:-1});
+   ai.anims.play("aiWalk"+i,true);
+ }
 
-  // Particle effects
-  particles = this.add.particles('spark');
+ // 💰 Treasures
+ treasures = this.physics.add.group();
+ for(let i=0;i<6;i++){
+   treasures.create(Phaser.Math.Between(100,config.width-100),
+                    Phaser.Math.Between(100,config.height-200),
+                    'treasure').setScale(0.6);
+ }
 
-  // Overlap collection
-  this.physics.add.overlap(player,treasures,collectTreasure,null,this);
+ // ✨ Particles for sparkle
+ particles = this.add.particles('spark');
 
-  // Mobile buttons
-  ['left','right','up','down','jump'].forEach(key=>{
-    cursors[key]=false;
-    document.getElementById(key).addEventListener('pointerdown',()=>cursors[key]=true);
-    document.getElementById(key).addEventListener('pointerup',()=>cursors[key]=false);
-  });
+ // 💡 Treasure collection
+ this.physics.add.overlap(player,treasures,collectTreasure,null,this);
 
-  // Camera follow
-  this.cameras.main.startFollow(player,{ lerp:0.1, followOffset:{x:0,y:0} });
+ // 🎮 Mobile button handlers
+ ['left','right','up','down','jump'].forEach(key=>{
+   cursors[key] = false;
+   document.getElementById(key).addEventListener("pointerdown",()=>cursors[key]=true);
+   document.getElementById(key).addEventListener("pointerup",()=>cursors[key]=false);
+ });
+
+ // 📍 Camera follow
+ this.cameras.main.startFollow(player,{ lerp:0.1 });
 }
 
 function update() {
+
   let speed = 200;
   player.setVelocity(0);
 
-  if(cursors.left) player.setVelocityX(-speed);
+  if(cursors.left)  player.setVelocityX(-speed);
   if(cursors.right) player.setVelocityX(speed);
-  if(cursors.up) player.setVelocityY(-speed);
-  if(cursors.down) player.setVelocityY(speed);
-  if(cursors.jump && player.body.blocked.down) player.setVelocityY(-400);
+  if(cursors.up)    player.setVelocityY(-speed);
+  if(cursors.down)  player.setVelocityY(speed);
 
-  if(player.body.velocity.x!==0 || player.body.velocity.y!==0) player.anims.play('walk',true);
-  else player.anims.stop();
+  if(player.body.velocity.x!==0 || player.body.velocity.y!==0) 
+    player.anims.play("walk",true);
+  else
+    player.anims.stop();
 
-  // AI random movement
+  // 🍃 AI random motion
   aiGroup.getChildren().forEach(ai=>{
-    if(!ai.direction || Phaser.Math.Between(0,100)<2){
-      ai.direction = {x:Phaser.Math.Between(-100,100), y:Phaser.Math.Between(-100,100)};
+    if(!ai.direction || Phaser.Math.Between(0,100)<3){
+      ai.direction = { x:Phaser.Math.Between(-120,120), y:Phaser.Math.Between(-120,120) };
     }
-    ai.setVelocity(ai.direction.x,ai.direction.y);
+    ai.setVelocity(ai.direction.x, ai.direction.y);
   });
 
-  // Parallax movement
-  this.bg_far.tilePositionX = this.cameras.main.scrollX*0.2;
-  this.bg_mid.tilePositionX = this.cameras.main.scrollX*0.5;
-  this.bg_front.tilePositionX = this.cameras.main.scrollX*0.8;
+  // 🎥 Parallax effect
+  this.bg_far.tilePositionX  = this.cameras.main.scrollX * 0.2;
+  this.bg_mid.tilePositionX  = this.cameras.main.scrollX * 0.5;
+  this.bg_front.tilePositionX= this.cameras.main.scrollX * 0.8;
 }
 
 function collectTreasure(player, treasure) {
   treasure.disableBody(true,true);
-  coins += Phaser.Math.Between(4000,10000);
+  let earned = Phaser.Math.Between(3000,10000);
+  coins += earned;
+  scoreText.textContent = "Coins: " + coins;
 
-  feedback.innerHTML = "✨ Treasure Collected! Coins: "+coins;
+  feedback.innerHTML = "✨ +"+earned+" Coins!";
   feedback.style.color="gold";
 
   let emitter = particles.createEmitter({
     x: treasure.x,
     y: treasure.y,
     speed:{min:-200,max:200},
-    lifespan:600,
+    lifespan:700,
     quantity:30,
     scale:{start:0.6,end:0}
   });
 
-  setTimeout(()=>{ emitter.stop(); feedback.innerHTML=""; },1000);
+  // Show item in inventory bar
+  let invDiv = document.createElement("div");
+  invDiv.className = "inv-item";
+  invDiv.style.backgroundImage = "url('https://labs.phaser.io/assets/sprites/chest.png')";
+  inventoryUI.appendChild(invDiv);
+
+  setTimeout(()=>{
+    emitter.stop();
+    feedback.innerHTML="";
+  },1000);
 }
+
 </script>
 </body>
 </html>
